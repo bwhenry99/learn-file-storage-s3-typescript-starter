@@ -2,9 +2,10 @@ import { getBearerToken, validateJWT } from "../auth";
 import { respondWithJSON } from "./json";
 import { getVideo, updateVideo } from "../db/videos";
 import type { ApiConfig } from "../config";
-import type { BunRequest } from "bun";
+import { BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 import { Buffer } from "node:buffer"
+import path from "node:path"
 
 export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   const { videoId } = req.params as { videoId?: string };
@@ -32,7 +33,8 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   }
 
   const mediaType = image.type;
-  const buffer = Buffer.from(await image.arrayBuffer()).toString("Base64");
+  const fileType = mediaType.split('/')[1];
+  const buffer = await image.arrayBuffer();
 
   const videoData = getVideo(cfg.db, videoId);
   if(!videoData)
@@ -44,8 +46,9 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   {
     throw new UserForbiddenError("Not authorized to modify video");
   }
-
-  const url = `data:${mediaType};base64,${buffer}`
+  const filepath = path.join(cfg.assetsRoot, `${videoId}.${fileType}`);
+  await Bun.write(filepath, buffer);
+  const url = `http://localhost:${cfg.port}/assets/${videoId}.${fileType}`
   videoData.thumbnailURL = url;
   updateVideo(cfg.db, videoData);
 
