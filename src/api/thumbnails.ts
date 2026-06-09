@@ -6,6 +6,7 @@ import { BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 import { Buffer } from "node:buffer"
 import path from "node:path"
+import {randomBytes} from "node:crypto"
 
 export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   const { videoId } = req.params as { videoId?: string };
@@ -33,6 +34,11 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   }
 
   const mediaType = image.type;
+  if(mediaType != "image/jpeg" && mediaType != "image/png")
+  {
+    throw new BadRequestError("Not an image file type");
+  }
+
   const fileType = mediaType.split('/')[1];
   const buffer = await image.arrayBuffer();
 
@@ -46,9 +52,10 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   {
     throw new UserForbiddenError("Not authorized to modify video");
   }
-  const filepath = path.join(cfg.assetsRoot, `${videoId}.${fileType}`);
+  const file = randomBytes(32).toString("Base64");
+  const filepath = path.join(cfg.assetsRoot, `${file}.${fileType}`);
   await Bun.write(filepath, buffer);
-  const url = `http://localhost:${cfg.port}/assets/${videoId}.${fileType}`
+  const url = `http://localhost:${cfg.port}/assets/${file}.${fileType}`
   videoData.thumbnailURL = url;
   updateVideo(cfg.db, videoData);
 
