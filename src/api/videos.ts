@@ -43,13 +43,40 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   const buffer = await video.arrayBuffer();
   const filepath = path.join(cfg.assetsRoot, `temp`);
   await Bun.write(filepath, buffer);
+  const AR = await getVidoeAspecRatio(filepath);
 
-  const s3file = cfg.s3client.file(`${videoId}.mp4`);
+  const s3file = cfg.s3client.file(`${AR}/${videoId}.mp4`);
   await s3file.write(await Bun.file(filepath), {type: video.type});
-  videoData.videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${videoId}.mp4`
+  videoData.videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${AR}/${videoId}.mp4`
 
   updateVideo(cfg.db, videoData);
 
   await Bun.file(filepath).delete();
   return respondWithJSON(200, null);
+}
+
+async function getVidoeAspecRatio(filePath: string): Promise<string>
+{
+  const proc = Bun.spawn(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", filePath]);
+  const result = await proc.stdout.text();
+
+  if(await proc.exited != 0)
+  {
+    throw new Error("Bad ffmpeg call");
+  }
+
+  const resultObj = JSON.parse(result);
+  const width = resultObj["streams"][0]["width"];
+  const height = resultObj["streams"][0]["height"];
+
+  if(Math.floor(width/height) == Math.floor(16/9))
+  {
+    return "landscape"
+  }
+
+  if(Math.floor(height/width) == Math.floor(16/9))
+  {
+    return "portrait"
+  }
+  return "other"
 }
