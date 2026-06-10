@@ -1,10 +1,11 @@
 import { respondWithJSON } from "./json";
 
-import { type ApiConfig } from "../config";
-import { BunRequest } from "bun";
+import { cfg, type ApiConfig } from "../config";
+import { BunRequest, s3 } from "bun";
 import { BadRequestError, UserForbiddenError } from "./errors";
 import { getBearerToken, validateJWT } from "../auth";
 import { getVideo, updateVideo } from "../db/videos";
+import type { Video } from "../db/videos";
 import path from "node:path"
 
 export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
@@ -43,21 +44,22 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   const buffer = await video.arrayBuffer();
   const filepath = path.join(cfg.assetsRoot, `temp`);
   await Bun.write(filepath, buffer);
-  const AR = await getVidoeAspecRatio(filepath);
+  const AR = await getVideoAspecRatio(filepath);
   const processed =  await processVideoForFastStart(filepath);
 
   const s3file = cfg.s3client.file(`${AR}/${videoId}.mp4`);
   await s3file.write(await Bun.file(processed), {type: video.type});
-  videoData.videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${AR}/${videoId}.mp4`
+  videoData.videoURL = `${AR}/${videoId}.mp4`
 
   updateVideo(cfg.db, videoData);
 
   await Bun.file(filepath).delete();
   await Bun.file(processed).delete();
-  return respondWithJSON(200, null);
+  const signedVideo = dbVideoToSignedVideo(videoData);
+  return respondWithJSON(200, signedVideo);
 }
 
-async function getVidoeAspecRatio(filePath: string): Promise<string>
+async function getVideoAspecRatio(filePath: string): Promise<string>
 {
   const proc = Bun.spawn(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", filePath]);
   const result = await proc.stdout.text();
@@ -92,5 +94,24 @@ async function processVideoForFastStart(filePath: string)
     throw new Error("Cannot convert video file");
   }
   return outputPath;
+}
+
+async function generatePresignedURL(key: string, expireTime: number)
+{
+  const upload = await cfg.s3client.presign(key, {expiresIn: expireTime});
+  console.log(upload);
+  return upload;
+}
+
+export async function dbVideoToSignedVideo(video: Video)
+{
+  if(!video.videoURL)
+  {
+    throw new Error("No video URL");
+  }
+
+  const signedURL = await generatePresignedURL(video.videoURL, 3600);
+  video.videoURL = signedURL;
+  return video;
 }
 
