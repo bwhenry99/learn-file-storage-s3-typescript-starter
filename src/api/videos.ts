@@ -44,14 +44,16 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   const filepath = path.join(cfg.assetsRoot, `temp`);
   await Bun.write(filepath, buffer);
   const AR = await getVidoeAspecRatio(filepath);
+  const processed =  await processVideoForFastStart(filepath);
 
   const s3file = cfg.s3client.file(`${AR}/${videoId}.mp4`);
-  await s3file.write(await Bun.file(filepath), {type: video.type});
+  await s3file.write(await Bun.file(processed), {type: video.type});
   videoData.videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${AR}/${videoId}.mp4`
 
   updateVideo(cfg.db, videoData);
 
   await Bun.file(filepath).delete();
+  await Bun.file(processed).delete();
   return respondWithJSON(200, null);
 }
 
@@ -80,3 +82,15 @@ async function getVidoeAspecRatio(filePath: string): Promise<string>
   }
   return "other"
 }
+
+async function processVideoForFastStart(filePath: string)
+{
+  const outputPath = filePath + ".processed";
+  const proc = Bun.spawn(["ffmpeg", "-i", filePath, "-movflags", "faststart", "-map_metadata", "0", "-codec", "copy", "-f", "mp4", outputPath]);
+  if(await proc.exited != 0)
+  {
+    throw new Error("Cannot convert video file");
+  }
+  return outputPath;
+}
+
