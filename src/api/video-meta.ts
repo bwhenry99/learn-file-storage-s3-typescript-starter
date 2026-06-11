@@ -56,7 +56,7 @@ export async function handlerVideoGet(cfg: ApiConfig, req: BunRequest) {
     throw new NotFoundError("Couldn't find video");
   }
 
-  return respondWithJSON(200, await(dbVideoToSignedVideo(video)));
+  return respondWithJSON(200, video);
 }
 
 export async function handlerVideosRetrieve(cfg: ApiConfig, req: Request) {
@@ -64,10 +64,5 @@ export async function handlerVideosRetrieve(cfg: ApiConfig, req: Request) {
   const userID = validateJWT(token, cfg.jwtSecret);
 
   const videos = getVideos(cfg.db, userID);
-  let correcturl = [];
-  for(const video of videos)
-  {
-    correcturl.push(await(dbVideoToSignedVideo(video)));
-  }
-  return respondWithJSON(200, correcturl);
+  return respondWithJSON(200, videos);
 }

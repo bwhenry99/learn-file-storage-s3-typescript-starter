@@ -49,14 +49,13 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
 
   const s3file = cfg.s3client.file(`${AR}/${videoId}.mp4`);
   await s3file.write(await Bun.file(processed), {type: video.type});
-  videoData.videoURL = `${AR}/${videoId}.mp4`
+  videoData.videoURL = `https://d2t6fxsur1lop0.cloudfront.net/${AR}/${videoId}.mp4`
 
   updateVideo(cfg.db, videoData);
 
   await Bun.file(filepath).delete();
   await Bun.file(processed).delete();
-  const signedVideo = dbVideoToSignedVideo(videoData);
-  return respondWithJSON(200, signedVideo);
+  return respondWithJSON(200, videoData);
 }
 
 async function getVideoAspecRatio(filePath: string): Promise<string>
@@ -95,23 +94,3 @@ async function processVideoForFastStart(filePath: string)
   }
   return outputPath;
 }
-
-async function generatePresignedURL(key: string, expireTime: number)
-{
-  const upload = await cfg.s3client.presign(key, {expiresIn: expireTime});
-  console.log(upload);
-  return upload;
-}
-
-export async function dbVideoToSignedVideo(video: Video)
-{
-  if(!video.videoURL)
-  {
-    throw new Error("No video URL");
-  }
-
-  const signedURL = await generatePresignedURL(video.videoURL, 3600);
-  video.videoURL = signedURL;
-  return video;
-}
-
